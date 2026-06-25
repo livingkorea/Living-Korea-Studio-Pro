@@ -49,7 +49,7 @@ public class MainForm : Form
     private readonly Drawing.Color DarkCard = Drawing.Color.FromArgb(31, 41, 55);
     private readonly Drawing.Color DarkText = Drawing.Color.FromArgb(243, 244, 246);
 
-    private const string ModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+    private const string ModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
 
     public MainForm()
     {
@@ -426,7 +426,16 @@ public class MainForm : Form
         catch (Exception ex)
         {
             SetStatus("Whisper 오류 / Whisper error");
-            MessageBox.Show("Whisper 음성 변환 중 오류가 발생했습니다.\nWhisper transcription failed.\n\n" + ex.Message, "Whisper Error");
+
+            var logPath = SaveErrorLog("Whisper transcription failed", ex);
+
+            MessageBox.Show(
+                "Whisper 음성 변환 중 오류가 발생했습니다.\n" +
+                "Whisper transcription failed.\n\n" +
+                "오류 내용 / Error:\n" + ex.Message + "\n\n" +
+                "상세 로그 저장 위치 / Error log:\n" + logPath + "\n\n" +
+                "이 내용을 복사해서 저에게 보내주세요.",
+                "Whisper Error");
         }
     }
 
@@ -434,14 +443,20 @@ public class MainForm : Form
     {
         var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LivingKoreaStudio", "models");
         Directory.CreateDirectory(appData);
-        var modelPath = Path.Combine(appData, "ggml-base.bin");
+        var modelPath = Path.Combine(appData, "ggml-tiny.bin");
 
-        if (File.Exists(modelPath) && new FileInfo(modelPath).Length > 10_000_000)
+        if (File.Exists(modelPath) && new FileInfo(modelPath).Length > 50_000_000)
             return modelPath;
+
+        if (File.Exists(modelPath))
+        {
+            try { File.Delete(modelPath); } catch { }
+        }
 
         SetStatus("Whisper 모델 다운로드 중... 첫 실행은 시간이 걸립니다. / Downloading Whisper model...");
         using var client = new HttpClient();
         client.Timeout = TimeSpan.FromMinutes(20);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("LivingKoreaStudio/1.1.2");
 
         using var response = await client.GetAsync(ModelUrl, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
@@ -450,7 +465,33 @@ public class MainForm : Form
         await using var file = File.Create(modelPath);
         await source.CopyToAsync(file);
 
+        var size = new FileInfo(modelPath).Length;
+        if (size < 50_000_000)
+        {
+            try { File.Delete(modelPath); } catch { }
+            throw new Exception("Whisper model download failed or file is too small. Downloaded size: " + size + " bytes");
+        }
+
         return modelPath;
+    }
+
+    private string SaveErrorLog(string title, Exception ex)
+    {
+        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LivingKoreaStudio", "logs");
+        Directory.CreateDirectory(logDir);
+        var logPath = Path.Combine(logDir, "error_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt");
+
+        var text =
+            title + Environment.NewLine +
+            "Time: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine +
+            "Current WAV: " + (currentWavPath ?? "(none)") + Environment.NewLine +
+            "WAV exists: " + (!string.IsNullOrWhiteSpace(currentWavPath) && File.Exists(currentWavPath)) + Environment.NewLine +
+            "Message: " + ex.Message + Environment.NewLine +
+            "Details:" + Environment.NewLine +
+            ex.ToString();
+
+        File.WriteAllText(logPath, text, Encoding.UTF8);
+        return logPath;
     }
 
     private async Task TranslateAsync()
