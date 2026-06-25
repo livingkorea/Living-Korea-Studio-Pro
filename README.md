@@ -49,3 +49,9 @@ C:\Users\User\AppData\Local\LivingKoreaStudio\logs\diagnostics_날짜.txt
 ## 참고
 
 Whisper 음성 인식은 로컬에서 동작합니다. 단, 현재 영어 번역 기능은 기존 코드의 무료 온라인 번역 방식(MyMemory)을 유지합니다. 완전 오프라인 번역까지 원하면 별도의 로컬 번역 엔진 구조가 필요합니다.
+
+
+## v1.2.2 fix
+- Replaced invalid/nonexistent `Whisper.net.Runtime.Cpu` with official CPU runtime package `Whisper.net.Runtime` 1.9.1.
+- Pinned NuGet versions to avoid wildcard restore surprises in GitHub Actions.
+- Kept PublishSingleFile=false so native Whisper DLLs remain visible to the loader.

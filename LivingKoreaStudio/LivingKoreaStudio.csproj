@@ -16,10 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NAudio" Version="2.*" />
-    <PackageReference Include="Whisper.net" Version="1.*" />
-    <!-- CPU 전용 로컬 Whisper Runtime: GPU/CUDA 의존성 없이 무료 로컬 실행 -->
-    <PackageReference Include="Whisper.net.Runtime.Cpu" Version="1.*" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <!-- CPU 전용 로컬 Whisper Runtime: Whisper.net.Runtime 이 기본 CPU 런타임입니다. -->
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
   </ItemGroup>
 
 </Project>
