@@ -1,5 +1,5 @@
 using System;
-using System.Globalization;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -27,14 +27,17 @@ public class MainForm : Form
     private readonly Label statusLabel = new();
     private readonly ComboBox styleBox = new();
     private readonly Button micButton = new();
+    private readonly Button micCheckButton = new();
+
     private SpeechRecognitionEngine? recognizer;
     private bool isListening = false;
 
     public MainForm()
     {
-        Text = "Living Korea Studio";
-        Width = 1180;
-        Height = 820;
+        Text = "Living Korea Studio Pro";
+        Width = 1200;
+        Height = 840;
+        MinimumSize = new System.Drawing.Size(1000, 720);
         StartPosition = FormStartPosition.CenterScreen;
         BuildUI();
         InitSpeech();
@@ -42,6 +45,8 @@ public class MainForm : Form
 
     private void BuildUI()
     {
+        Font = new System.Drawing.Font("맑은 고딕", 10);
+
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -49,106 +54,125 @@ public class MainForm : Form
             ColumnCount = 1,
             Padding = new Padding(14)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
         Controls.Add(root);
 
         var header = new Panel { Dock = DockStyle.Fill, BackColor = System.Drawing.Color.FromArgb(11, 85, 217) };
         header.Controls.Add(new Label
         {
-            Text = "Living Korea Studio",
+            Text = "Living Korea Studio Pro",
             ForeColor = System.Drawing.Color.White,
             Font = new System.Drawing.Font("Arial", 22, System.Drawing.FontStyle.Bold),
             Dock = DockStyle.Top,
-            Height = 38,
+            Height = 42,
             Padding = new Padding(12, 8, 0, 0)
         });
         header.Controls.Add(new Label
         {
-            Text = "Voice input + Korean to English translation note for your YouTube channel",
+            Text = "한국어 음성 입력 · 영어 번역 · 유튜브 대본 메모장  /  Korean Voice Input · English Translation · YouTube Script Notes",
             ForeColor = System.Drawing.Color.White,
-            Font = new System.Drawing.Font("Arial", 10),
+            Font = new System.Drawing.Font("맑은 고딕", 10),
             Dock = DockStyle.Bottom,
-            Height = 26,
-            Padding = new Padding(14, 0, 0, 7)
+            Height = 34,
+            Padding = new Padding(14, 0, 0, 9)
         });
         root.Controls.Add(header, 0, 0);
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-        top.Controls.Add(new Label { Text = "Translation Style", Width = 120, TextAlign = System.Drawing.ContentAlignment.MiddleLeft });
-        styleBox.Width = 190;
+        top.Controls.Add(new Label
+        {
+            Text = "번역 스타일 / Style",
+            Width = 140,
+            TextAlign = System.Drawing.ContentAlignment.MiddleLeft
+        });
+
+        styleBox.Width = 230;
         styleBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        styleBox.Items.AddRange(new object[] { "YouTube Script", "Natural English", "Simple English", "Formal" });
+        styleBox.Items.AddRange(new object[]
+        {
+            "유튜브 대본용 / YouTube Script",
+            "자연스러운 영어 / Natural English",
+            "쉬운 영어 / Simple English",
+            "정중한 설명체 / Formal"
+        });
         styleBox.SelectedIndex = 0;
         top.Controls.Add(styleBox);
 
-        statusLabel.Text = "Ready";
+        statusLabel.Text = "대기 중 / Ready";
         statusLabel.AutoSize = true;
         statusLabel.Padding = new Padding(20, 9, 0, 0);
         top.Controls.Add(statusLabel);
         root.Controls.Add(top, 0, 1);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 560 };
+        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 575 };
 
         koreanBox.Multiline = true;
         koreanBox.ScrollBars = ScrollBars.Vertical;
-        koreanBox.Font = new System.Drawing.Font("Malgun Gothic", 12);
+        koreanBox.Font = new System.Drawing.Font("맑은 고딕", 12);
         koreanBox.Dock = DockStyle.Fill;
+        koreanBox.PlaceholderText = "여기에 한국어를 입력하거나 마이크 시작을 누르고 말하세요.\r\nType Korean here or press Start Mic and speak.";
 
         englishBox.Multiline = true;
         englishBox.ScrollBars = ScrollBars.Vertical;
         englishBox.Font = new System.Drawing.Font("Arial", 12);
         englishBox.Dock = DockStyle.Fill;
         englishBox.ForeColor = System.Drawing.Color.FromArgb(11, 47, 128);
+        englishBox.PlaceholderText = "영어 번역 결과가 여기에 표시됩니다.\r\nEnglish translation will appear here.";
 
-        split.Panel1.Controls.Add(WrapWithLabel("Korean Input / Voice Input", koreanBox));
-        split.Panel2.Controls.Add(WrapWithLabel("English Translation", englishBox));
+        split.Panel1.Controls.Add(WrapWithLabel("한국어 입력 / Korean Input", koreanBox));
+        split.Panel2.Controls.Add(WrapWithLabel("영어 번역 결과 / English Translation", englishBox));
         root.Controls.Add(split, 0, 2);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill };
 
-        micButton.Text = "Mic Start";
-        micButton.Width = 120;
+        micButton.Text = "마이크 시작 / Start Mic";
+        micButton.Width = 155;
         micButton.Click += (_, _) => ToggleMic();
 
-        var translateButton = new Button { Text = "Translate", Width = 120 };
+        micCheckButton.Text = "마이크 확인 / Check Mic";
+        micCheckButton.Width = 160;
+        micCheckButton.Click += (_, _) => ShowSpeechInfo();
+
+        var translateButton = new Button { Text = "번역하기 / Translate", Width = 145 };
         translateButton.Click += async (_, _) => await TranslateAsync();
 
-        var addMemoButton = new Button { Text = "Add to Note", Width = 120 };
+        var addMemoButton = new Button { Text = "메모 추가 / Add Note", Width = 145 };
         addMemoButton.Click += (_, _) => AddToMemo();
 
-        var copyButton = new Button { Text = "Copy Both", Width = 120 };
+        var copyButton = new Button { Text = "둘 다 복사 / Copy Both", Width = 155 };
         copyButton.Click += (_, _) => CopyBoth();
 
-        var saveButton = new Button { Text = "Save TXT", Width = 120 };
+        var saveButton = new Button { Text = "TXT 저장 / Save", Width = 125 };
         saveButton.Click += (_, _) => SaveTxt();
 
-        var clearButton = new Button { Text = "Clear", Width = 120 };
-        clearButton.Click += (_, _) => { koreanBox.Clear(); englishBox.Clear(); SetStatus("Cleared"); };
+        var clearButton = new Button { Text = "비우기 / Clear", Width = 115 };
+        clearButton.Click += (_, _) => { koreanBox.Clear(); englishBox.Clear(); SetStatus("입력창을 비웠습니다. / Cleared"); };
 
-        buttons.Controls.AddRange(new Control[] { micButton, translateButton, addMemoButton, copyButton, saveButton, clearButton });
+        buttons.Controls.AddRange(new Control[] { micButton, micCheckButton, translateButton, addMemoButton, copyButton, saveButton, clearButton });
         root.Controls.Add(buttons, 0, 3);
 
         memoBox.Multiline = true;
         memoBox.ScrollBars = ScrollBars.Vertical;
-        memoBox.Font = new System.Drawing.Font("Malgun Gothic", 10);
+        memoBox.Font = new System.Drawing.Font("맑은 고딕", 10);
         memoBox.Dock = DockStyle.Fill;
-        root.Controls.Add(WrapWithLabel("Translation Note", memoBox), 0, 4);
+        memoBox.PlaceholderText = "저장한 번역 메모가 여기에 쌓입니다.\r\nSaved translation notes will appear here.";
+        root.Controls.Add(WrapWithLabel("번역 메모장 / Translation Notes", memoBox), 0, 4);
     }
 
     private static Control WrapWithLabel(string label, Control inner)
     {
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1 };
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.Controls.Add(new Label
         {
             Text = label,
             Dock = DockStyle.Fill,
-            Font = new System.Drawing.Font("Malgun Gothic", 11, System.Drawing.FontStyle.Bold),
+            Font = new System.Drawing.Font("맑은 고딕", 11, System.Drawing.FontStyle.Bold),
             TextAlign = System.Drawing.ContentAlignment.MiddleLeft,
             Padding = new Padding(8, 0, 0, 0)
         }, 0, 0);
@@ -160,58 +184,133 @@ public class MainForm : Form
     {
         try
         {
-            recognizer = new SpeechRecognitionEngine(new CultureInfo("ko-KR"));
+            var installed = SpeechRecognitionEngine.InstalledRecognizers();
+            var koreanRecognizer = installed.FirstOrDefault(r =>
+                r.Culture.Name.Equals("ko-KR", StringComparison.OrdinalIgnoreCase) ||
+                r.Culture.TwoLetterISOLanguageName.Equals("ko", StringComparison.OrdinalIgnoreCase));
+
+            if (koreanRecognizer == null)
+            {
+                micButton.Enabled = false;
+                micButton.Text = "마이크 사용 불가 / Mic Unavailable";
+                SetStatus("한국어 음성 인식 엔진이 없습니다. / Korean speech engine not found.");
+                return;
+            }
+
+            recognizer = new SpeechRecognitionEngine(koreanRecognizer);
             recognizer.SetInputToDefaultAudioDevice();
             recognizer.LoadGrammar(new DictationGrammar());
+
             recognizer.SpeechRecognized += async (_, e) =>
             {
                 if (!string.IsNullOrWhiteSpace(e.Result.Text))
                 {
                     koreanBox.AppendText((koreanBox.Text.Trim().Length > 0 ? Environment.NewLine : "") + e.Result.Text);
-                    SetStatus("Voice input added");
+                    SetStatus("음성 입력 완료 / Voice captured: " + e.Result.Text);
                     await TranslateAsync();
                 }
-            };
-            recognizer.RecognizeCompleted += (_, _) =>
-            {
-                if (isListening)
+                else
                 {
-                    try { recognizer?.RecognizeAsync(RecognizeMode.Single); } catch { }
+                    SetStatus("음성을 인식하지 못했습니다. / Speech not recognized.");
                 }
             };
+
+            recognizer.SpeechRecognitionRejected += (_, _) =>
+            {
+                SetStatus("음성을 인식하지 못했습니다. / Speech rejected. Try speaking more clearly.");
+            };
+
+            recognizer.RecognizeCompleted += (_, e) =>
+            {
+                if (e.Error != null)
+                {
+                    SetStatus("마이크 오류 / Mic error: " + e.Error.Message);
+                    return;
+                }
+
+                if (isListening)
+                {
+                    try
+                    {
+                        SetStatus("듣는 중... / Listening...");
+                        recognizer?.RecognizeAsync(RecognizeMode.Single);
+                    }
+                    catch
+                    {
+                        SetStatus("마이크 재시작 오류 / Mic restart error.");
+                    }
+                }
+            };
+
+            SetStatus("마이크 준비 완료 / Mic ready");
         }
-        catch
+        catch (Exception ex)
         {
             micButton.Enabled = false;
-            micButton.Text = "Mic unavailable";
-            SetStatus("Korean speech recognition is not available on this Windows PC.");
+            micButton.Text = "마이크 오류 / Mic Error";
+            SetStatus("마이크 초기화 실패 / Mic initialization failed");
+            MessageBox.Show("마이크 초기화에 실패했습니다.\nMic initialization failed.\n\n" + ex.Message, "마이크 오류 / Mic Error");
+        }
+    }
+
+    private void ShowSpeechInfo()
+    {
+        try
+        {
+            var installed = SpeechRecognitionEngine.InstalledRecognizers();
+
+            if (installed.Count == 0)
+            {
+                MessageBox.Show(
+                    "설치된 Windows 음성 인식 엔진이 없습니다.\n\n" +
+                    "No Windows speech recognition engine is installed.\n\n" +
+                    "Windows 설정 → 시간 및 언어 → 언어 및 지역 → 한국어 → 언어 옵션 → 음성 인식 설치\n" +
+                    "Windows Settings → Time & Language → Language & Region → Korean → Language Options → Install Speech",
+                    "마이크 확인 / Check Mic");
+                return;
+            }
+
+            var info = string.Join("\n", installed.Select(r => "- " + r.Culture.Name + " / " + r.Description));
+            MessageBox.Show(
+                "설치된 음성 인식 엔진 / Installed speech engines:\n\n" + info + "\n\n" +
+                "한국어 인식에는 ko-KR 항목이 필요합니다.\nKorean recognition requires ko-KR.",
+                "마이크 확인 / Check Mic");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("음성 인식 정보를 확인할 수 없습니다.\nCould not check speech information.\n\n" + ex.Message, "마이크 확인 오류 / Check Mic Error");
         }
     }
 
     private void ToggleMic()
     {
-        if (recognizer == null) return;
+        if (recognizer == null)
+        {
+            ShowSpeechInfo();
+            return;
+        }
 
         try
         {
             if (!isListening)
             {
                 isListening = true;
-                micButton.Text = "Mic Stop";
-                SetStatus("Listening...");
+                micButton.Text = "마이크 중지 / Stop Mic";
+                SetStatus("듣는 중... 한국어로 말해보세요. / Listening... Please speak Korean.");
                 recognizer.RecognizeAsync(RecognizeMode.Single);
             }
             else
             {
                 isListening = false;
-                micButton.Text = "Mic Start";
+                micButton.Text = "마이크 시작 / Start Mic";
                 recognizer.RecognizeAsyncCancel();
-                SetStatus("Mic stopped");
+                SetStatus("마이크 중지됨 / Mic stopped");
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Mic Error");
+            SetStatus("마이크 오류 / Mic error");
+            MessageBox.Show(ex.Message, "마이크 오류 / Mic Error");
         }
     }
 
@@ -228,27 +327,30 @@ public class MainForm : Form
 
         try
         {
-            SetStatus("Translating...");
+            SetStatus("번역 중... / Translating...");
             var translated = await TranslateWithMyMemoryAsync(ko);
 
-            if (styleBox.Text == "YouTube Script")
+            if (styleBox.Text.StartsWith("유튜브"))
             {
-                translated = "Hello everyone, welcome to Living Korea!\r\n\r\n" +
-                             translated +
-                             "\r\n\r\nIf this was helpful, please like and subscribe for more real-life tips about Korea.";
+                translated =
+                    "Hello everyone, welcome to Living Korea!\r\n\r\n" +
+                    translated +
+                    "\r\n\r\nIf this was helpful, please like and subscribe for more real-life tips about Korea.";
             }
-            else if (styleBox.Text == "Formal")
+            else if (styleBox.Text.StartsWith("정중한"))
             {
-                translated = "Hello. Today, I would like to explain this topic clearly and politely.\r\n\r\n" + translated;
+                translated =
+                    "Hello. Today, I would like to explain this topic clearly and politely.\r\n\r\n" +
+                    translated;
             }
 
             englishBox.Text = translated;
-            SetStatus("Done");
+            SetStatus("번역 완료 / Translation complete");
         }
         catch (Exception ex)
         {
-            SetStatus("Translation Error");
-            MessageBox.Show(ex.Message, "Translation Error");
+            SetStatus("번역 오류 / Translation error");
+            MessageBox.Show("번역 중 오류가 발생했습니다.\nTranslation failed.\n\n" + ex.Message, "번역 오류 / Translation Error");
         }
     }
 
@@ -268,26 +370,27 @@ public class MainForm : Form
     {
         var ko = koreanBox.Text.Trim();
         var en = englishBox.Text.Trim();
+
         if (string.IsNullOrWhiteSpace(ko) || string.IsNullOrWhiteSpace(en))
         {
-            MessageBox.Show("Korean and English text are required.");
+            MessageBox.Show("한국어와 영어 번역 결과가 모두 있어야 합니다.\nKorean and English text are required.", "확인 / Check");
             return;
         }
 
         var block =
             $"[{DateTime.Now:yyyy-MM-dd HH:mm}]\r\n" +
-            $"Korean:\r\n{ko}\r\n\r\n" +
-            $"English:\r\n{en}\r\n\r\n" +
+            $"한국어 / Korean:\r\n{ko}\r\n\r\n" +
+            $"영어 / English:\r\n{en}\r\n\r\n" +
             "--------------------------------------------------\r\n\r\n";
 
         memoBox.Text = block + memoBox.Text;
-        SetStatus("Added to note");
+        SetStatus("메모장에 추가했습니다. / Added to notes.");
     }
 
     private void CopyBoth()
     {
-        Clipboard.SetText($"Korean:\r\n{koreanBox.Text.Trim()}\r\n\r\nEnglish:\r\n{englishBox.Text.Trim()}");
-        SetStatus("Copied");
+        Clipboard.SetText($"한국어 / Korean:\r\n{koreanBox.Text.Trim()}\r\n\r\n영어 / English:\r\n{englishBox.Text.Trim()}");
+        SetStatus("복사 완료 / Copied");
     }
 
     private void SaveTxt()
@@ -301,11 +404,11 @@ public class MainForm : Form
         if (dialog.ShowDialog() == DialogResult.OK)
         {
             var content = string.IsNullOrWhiteSpace(memoBox.Text)
-                ? $"Korean:\r\n{koreanBox.Text.Trim()}\r\n\r\nEnglish:\r\n{englishBox.Text.Trim()}"
+                ? $"한국어 / Korean:\r\n{koreanBox.Text.Trim()}\r\n\r\n영어 / English:\r\n{englishBox.Text.Trim()}"
                 : memoBox.Text;
 
             System.IO.File.WriteAllText(dialog.FileName, content, Encoding.UTF8);
-            SetStatus("Saved");
+            SetStatus("TXT 저장 완료 / TXT saved");
         }
     }
 }
