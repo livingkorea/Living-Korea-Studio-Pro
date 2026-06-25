@@ -277,6 +277,19 @@ public class MainForm : Form
         foreach (Control child in control.Controls) ApplyThemeToControl(child, bg, card, text, boxBg, boxText);
     }
 
+
+    private void SetStatus(string text)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => SetStatus(text)));
+            return;
+        }
+
+        statusLabel.Text = text;
+        statusLabel.Refresh();
+    }
+
     private async Task ToggleRecordingAsync()
     {
         if (!isRecording)
