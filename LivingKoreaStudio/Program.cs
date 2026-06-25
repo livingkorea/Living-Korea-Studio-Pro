@@ -34,6 +34,7 @@ public class MainForm : Form
     private Button micButton = new();
     private Button micCheckButton = new();
     private Button themeButton = new();
+    private Button diagnoseButton = new();
 
     private Panel headerPanel = new();
     private bool darkMode = false;
@@ -177,6 +178,9 @@ public class MainForm : Form
         var translateButton = MakeButton("🌎 번역하기 / Translate", 170);
         translateButton.Click += async (_, _) => await TranslateAsync();
 
+        diagnoseButton = MakeButton("🧪 환경진단 / Diagnose", 180);
+        diagnoseButton.Click += (_, _) => RunEnvironmentDiagnostics();
+
         var addMemoButton = MakeButton("📝 메모 추가 / Add Note", 165);
         addMemoButton.Click += (_, _) => AddToMemo();
 
@@ -189,7 +193,7 @@ public class MainForm : Form
         var clearButton = MakeButton("🧹 비우기 / Clear", 130);
         clearButton.Click += (_, _) => { koreanBox.Clear(); englishBox.Clear(); SetStatus("입력창을 비웠습니다. / Cleared"); };
 
-        buttons.Controls.AddRange(new Control[] { micButton, micCheckButton, translateButton, addMemoButton, copyButton, saveButton, clearButton });
+        buttons.Controls.AddRange(new Control[] { micButton, micCheckButton, diagnoseButton, translateButton, addMemoButton, copyButton, saveButton, clearButton });
         buttonCard.Controls.Add(buttons);
         root.Controls.Add(buttonCard, 0, 3);
 
@@ -405,6 +409,86 @@ public class MainForm : Form
             SetStatus("녹음 중지 오류 / Stop recording error");
             MessageBox.Show(ex.Message, "녹음 오류 / Recording Error");
             return null;
+        }
+    }
+
+
+    private void RunEnvironmentDiagnostics()
+    {
+        try
+        {
+            var baseDir = AppContext.BaseDirectory;
+            var runtimeNativeDir = Path.Combine(baseDir, "runtimes", "win-x64", "native");
+            var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LivingKoreaStudio");
+            var modelPath = Path.Combine(appData, "models", "ggml-tiny.bin");
+            var logDir = Path.Combine(appData, "logs");
+            Directory.CreateDirectory(logDir);
+            var logPath = Path.Combine(logDir, "diagnostics_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt");
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Living Korea Studio Diagnostics");
+            sb.AppendLine("Time: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("App base directory: " + baseDir);
+            sb.AppendLine("OS: " + Environment.OSVersion);
+            sb.AppendLine("64-bit process: " + Environment.Is64BitProcess);
+            sb.AppendLine(".NET: " + Environment.Version);
+            sb.AppendLine();
+
+            sb.AppendLine("[Microphone]");
+            sb.AppendLine("Device count: " + WaveInEvent.DeviceCount);
+            for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+            {
+                var caps = WaveInEvent.GetCapabilities(i);
+                sb.AppendLine("- " + i + ": " + caps.ProductName + " / Channels: " + caps.Channels);
+            }
+            sb.AppendLine();
+
+            sb.AppendLine("[Whisper model]");
+            sb.AppendLine("Model path: " + modelPath);
+            sb.AppendLine("Model exists: " + File.Exists(modelPath));
+            if (File.Exists(modelPath)) sb.AppendLine("Model size: " + new FileInfo(modelPath).Length + " bytes");
+            sb.AppendLine();
+
+            sb.AppendLine("[Native runtime]");
+            sb.AppendLine("Runtime native folder: " + runtimeNativeDir);
+            sb.AppendLine("Runtime native folder exists: " + Directory.Exists(runtimeNativeDir));
+            var candidates = new[]
+            {
+                Path.Combine(baseDir, "whisper.dll"),
+                Path.Combine(baseDir, "ggml.dll"),
+                Path.Combine(runtimeNativeDir, "whisper.dll"),
+                Path.Combine(runtimeNativeDir, "ggml.dll")
+            };
+            foreach (var file in candidates)
+            {
+                sb.AppendLine(file + " => " + File.Exists(file));
+            }
+            if (Directory.Exists(runtimeNativeDir))
+            {
+                sb.AppendLine();
+                sb.AppendLine("Files in native folder:");
+                foreach (var file in Directory.GetFiles(runtimeNativeDir))
+                {
+                    sb.AppendLine("- " + Path.GetFileName(file) + " / " + new FileInfo(file).Length + " bytes");
+                }
+            }
+
+            File.WriteAllText(logPath, sb.ToString(), Encoding.UTF8);
+
+            var summary =
+                "환경진단이 완료되었습니다.\nDiagnostics completed.\n\n" +
+                "마이크 개수 / Microphones: " + WaveInEvent.DeviceCount + "\n" +
+                "모델 파일 / Model: " + (File.Exists(modelPath) ? "OK" : "없음 / Missing") + "\n" +
+                "Whisper Runtime 폴더 / Runtime folder: " + (Directory.Exists(runtimeNativeDir) ? "OK" : "없음 / Missing") + "\n\n" +
+                "진단 로그 / Log:\n" + logPath;
+
+            MessageBox.Show(summary, "환경진단 / Diagnostics");
+            SetStatus("환경진단 완료 / Diagnostics completed");
+        }
+        catch (Exception ex)
+        {
+            var logPath = SaveErrorLog("Environment diagnostics failed", ex);
+            MessageBox.Show("환경진단 중 오류가 발생했습니다.\nDiagnostics failed.\n\n" + ex.Message + "\n\nLog:\n" + logPath, "환경진단 오류 / Diagnostics Error");
         }
     }
 

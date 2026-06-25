@@ -1,38 +1,51 @@
-# Living Korea Studio Pro - Local Whisper v1.2.0
+# Living Korea Studio Whisper v1.2.1 Local Verified
 
-API 유료 사용 없이 로컬 Whisper 기반으로 마이크 음성을 텍스트로 변환하도록 수정한 버전입니다.
+API 유료 사용 없이 로컬 Whisper CPU Runtime 중심으로 동작하도록 구성한 버전입니다.
 
-## 변경 사항
+## 핵심 변경
 
-- GitHub Actions `PublishSingleFile=false` 적용
-  - Whisper native DLL이 EXE 안에 묶여 사라지는 문제 방지
-- `Whisper.net.Runtime.Cpu` 적용
-  - GPU/CUDA 없이 CPU 전용 로컬 Whisper 실행
-- 마이크 버튼 구조 단순화
-  - `마이크 시작`을 누르면 5초 단위로 자동 녹음
-  - 녹음 조각마다 Whisper 변환
-  - 한국어 원문 박스에 자동 타이핑
-  - 변환 후 자동 번역 실행
-- Whisper Runtime DLL 누락 시 더 알아보기 쉬운 오류 메시지 표시
+- GitHub Actions 자동 빌드 검증 추가
+- `PublishSingleFile=false` 고정
+- `PublishTrimmed=false` 고정
+- Whisper native runtime DLL 포함 여부 자동 검사
+- 빌드 성공 후 검증된 ZIP artifact 자동 생성
+- 프로그램 안에 `환경진단 / Diagnose` 버튼 추가
 
-## 사용 방법
+## GitHub에서 사용하는 방법
 
-1. GitHub에 이 프로젝트를 업로드합니다.
-2. Actions에서 Build Windows EXE를 실행합니다.
-3. Artifact: `LivingKoreaStudio-Whisper-v1.2.0-Local` 다운로드
-4. 압축을 푼 뒤 `LivingKoreaStudio.exe` 실행
+1. 이 ZIP 안의 파일을 GitHub 저장소에 업로드합니다.
+2. GitHub 저장소의 `Actions` 탭으로 이동합니다.
+3. `Build and Verify Windows EXE` workflow를 실행합니다.
+4. 성공하면 `LivingKoreaStudio-Whisper-v1.2.1-Local-Verified` artifact를 다운로드합니다.
+5. ZIP을 풀고 `LivingKoreaStudio.exe`를 실행합니다.
 
-## 중요
+## 실패하면 확인할 것
 
-이 버전은 EXE 하나짜리 프로그램이 아닙니다.
-Whisper 실행에 필요한 DLL과 `runtimes` 폴더가 함께 있어야 합니다.
+Actions가 실패할 경우 대부분 아래 문제입니다.
 
-따라서 다운로드한 artifact 압축을 푼 뒤, 폴더 안 파일을 그대로 유지한 상태에서 실행하세요.
+- Whisper native DLL이 publish 폴더에 없음
+- SingleFile 방식으로 잘못 빌드됨
+- Runtime 패키지 복원이 실패함
 
-## 첫 실행
+이번 버전은 `scripts/Verify-Publish.ps1`이 이 문제를 자동으로 잡습니다.
 
-첫 실행 시 `ggml-tiny.bin` Whisper 모델을 자동 다운로드합니다.
-다운로드 위치:
+## 사용자 PC에서 오류가 나면
 
-`C:\Users\User\AppData\Local\LivingKoreaStudio\models\ggml-tiny.bin`
+프로그램에서 `환경진단 / Diagnose` 버튼을 누르세요.
+진단 로그가 아래 위치에 저장됩니다.
 
+```text
+C:\Users\User\AppData\Local\LivingKoreaStudio\logs\diagnostics_날짜.txt
+```
+
+그 로그를 보내주면 다음을 확인할 수 있습니다.
+
+- 마이크 장치 인식 여부
+- Whisper 모델 파일 존재 여부
+- native DLL 존재 여부
+- 실행 폴더 경로
+- .NET/OS 환경
+
+## 참고
+
+Whisper 음성 인식은 로컬에서 동작합니다. 단, 현재 영어 번역 기능은 기존 코드의 무료 온라인 번역 방식(MyMemory)을 유지합니다. 완전 오프라인 번역까지 원하면 별도의 로컬 번역 엔진 구조가 필요합니다.
