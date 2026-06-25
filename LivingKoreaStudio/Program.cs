@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using NAudio.Wave;
@@ -36,6 +38,10 @@ public class MainForm : Form
     private Panel headerPanel = new();
     private bool darkMode = false;
     private bool isRecording = false;
+    private bool autoMicMode = false;
+    private bool isTranscribing = false;
+    private CancellationTokenSource? micLoopCts;
+    private const int SegmentSeconds = 5;
 
     private WaveInEvent? waveIn;
     private WaveFileWriter? writer;
@@ -91,7 +97,7 @@ public class MainForm : Form
         });
         headerPanel.Controls.Add(new Label
         {
-            Text = "Whisper 음성 입력 · 영어 번역 · 유튜브 제작 메모장  /  Whisper Voice · English Translation · YouTube Creator Notes",
+            Text = "로컬 Whisper 자동 자막 · 영어 번역 · 유튜브 제작 메모장  /  Local Whisper Auto Caption · Translation · Notes",
             ForeColor = Drawing.Color.White,
             Font = new Drawing.Font("맑은 고딕", 10),
             Dock = DockStyle.Bottom,
@@ -162,7 +168,7 @@ public class MainForm : Form
         var buttonCard = CardPanel();
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12, 12, 12, 8) };
 
-        micButton = MakeButton("🎤 녹음 시작 / Start Recording", 210);
+        micButton = MakeButton("🎤 마이크 시작 / Start Mic", 210);
         micButton.Click += async (_, _) => await ToggleRecordingAsync();
 
         micCheckButton = MakeButton("🔎 마이크 확인 / Check Mic", 180);
@@ -292,22 +298,58 @@ public class MainForm : Form
 
     private async Task ToggleRecordingAsync()
     {
-        if (!isRecording)
+        if (!autoMicMode)
         {
-            StartRecording();
+            autoMicMode = true;
+            micLoopCts = new CancellationTokenSource();
+            micButton.Text = "🛑 마이크 정지 / Stop Mic";
+            SetStatus("마이크 ON. 말하면 5초 단위로 자동 자막과 번역을 만듭니다. / Mic ON. Auto caption every 5 seconds.");
+            _ = RunAutoMicLoopAsync(micLoopCts.Token);
         }
         else
         {
-            StopRecording();
-            await Task.Delay(500);
-            if (!string.IsNullOrWhiteSpace(currentWavPath) && File.Exists(currentWavPath))
+            autoMicMode = false;
+            micLoopCts?.Cancel();
+            StopRecording(false);
+            micButton.Text = "🎤 마이크 시작 / Start Mic";
+            SetStatus("마이크 정지 / Mic stopped");
+            await Task.CompletedTask;
+        }
+    }
+
+    private async Task RunAutoMicLoopAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
             {
-                await TranscribeWavAsync(currentWavPath);
+                StartRecording(false);
+                await Task.Delay(TimeSpan.FromSeconds(SegmentSeconds), token);
+                var wavPath = StopRecording(false);
+                await Task.Delay(300);
+
+                if (!string.IsNullOrWhiteSpace(wavPath) && File.Exists(wavPath) && !isTranscribing)
+                {
+                    isTranscribing = true;
+                    await TranscribeWavAsync(wavPath);
+                    isTranscribing = false;
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                isTranscribing = false;
+                SetStatus("마이크 자동 처리 오류 / Auto mic error");
+                SaveErrorLog("Auto microphone loop failed", ex);
+                await Task.Delay(1000);
             }
         }
     }
 
-    private void StartRecording()
+    private void StartRecording(bool updateButton = true)
     {
         try
         {
@@ -337,8 +379,8 @@ public class MainForm : Form
 
             waveIn.StartRecording();
             isRecording = true;
-            micButton.Text = "🛑 녹음 중지 / Stop Recording";
-            SetStatus("녹음 중... 한국어로 말하세요. / Recording... Please speak Korean.");
+            if (updateButton) micButton.Text = "🛑 마이크 정지 / Stop Mic";
+            SetStatus("듣는 중... 한국어로 말하세요. / Listening... Please speak Korean.");
         }
         catch (Exception ex)
         {
@@ -347,19 +389,22 @@ public class MainForm : Form
         }
     }
 
-    private void StopRecording()
+    private string? StopRecording(bool updateButton = true)
     {
         try
         {
+            var wavPath = currentWavPath;
             isRecording = false;
-            micButton.Text = "🎤 녹음 시작 / Start Recording";
+            if (updateButton) micButton.Text = "🎤 마이크 시작 / Start Mic";
             waveIn?.StopRecording();
-            SetStatus("녹음 완료. Whisper 변환 준비 중... / Recording complete. Preparing Whisper...");
+            SetStatus("음성 조각 변환 준비 중... / Preparing Whisper segment...");
+            return wavPath;
         }
         catch (Exception ex)
         {
             SetStatus("녹음 중지 오류 / Stop recording error");
             MessageBox.Show(ex.Message, "녹음 오류 / Recording Error");
+            return null;
         }
     }
 
@@ -400,6 +445,7 @@ public class MainForm : Form
             SetStatus("Whisper 음성 변환 중... / Transcribing with Whisper...");
 
             var sb = new StringBuilder();
+            EnsureLocalWhisperRuntimeLooksReady();
             using var whisperFactory = WhisperFactory.FromPath(modelPath);
             using var processor = whisperFactory.CreateBuilder()
                 .WithLanguage("ko")
@@ -437,6 +483,25 @@ public class MainForm : Form
                 "이 내용을 복사해서 저에게 보내주세요.",
                 "Whisper Error");
         }
+    }
+
+    private void EnsureLocalWhisperRuntimeLooksReady()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var runtimeNativeDir = Path.Combine(baseDir, "runtimes", "win-x64", "native");
+        var likelyFiles = new[]
+        {
+            Path.Combine(baseDir, "whisper.dll"),
+            Path.Combine(baseDir, "ggml.dll"),
+            Path.Combine(runtimeNativeDir, "whisper.dll"),
+            Path.Combine(runtimeNativeDir, "ggml.dll")
+        };
+
+        if (Directory.Exists(runtimeNativeDir) || likelyFiles.Any(File.Exists))
+            return;
+
+        throw new FileNotFoundException(
+            @"로컬 Whisper Runtime DLL을 찾지 못했습니다. GitHub Actions가 SingleFile=false로 빌드되어야 하며, publish 폴더의 runtimes\win-x64\native 폴더가 EXE와 함께 있어야 합니다. / Local Whisper native DLLs were not found. Build with PublishSingleFile=false and keep the runtimes\win-x64\native folder next to the EXE.");
     }
 
     private async Task<string> EnsureWhisperModelAsync()
