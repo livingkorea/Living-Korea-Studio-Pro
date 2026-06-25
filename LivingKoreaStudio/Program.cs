@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Speech.Recognition;
+using Drawing = System.Drawing;
 
 namespace LivingKoreaStudio;
 
@@ -21,76 +22,100 @@ internal static class Program
 
 public class MainForm : Form
 {
-    private readonly TextBox koreanBox = new();
-    private readonly TextBox englishBox = new();
-    private readonly TextBox memoBox = new();
-    private readonly Label statusLabel = new();
-    private readonly ComboBox styleBox = new();
-    private readonly Button micButton = new();
-    private readonly Button micCheckButton = new();
+    private TextBox projectBox = new();
+    private TextBox koreanBox = new();
+    private TextBox englishBox = new();
+    private TextBox memoBox = new();
+    private Label statusLabel = new();
+    private ComboBox styleBox = new();
+    private Button micButton = new();
+    private Button micCheckButton = new();
+    private Button themeButton = new();
+
+    private Panel headerPanel = new();
+    private Panel topCard = new();
+    private Panel inputCard = new();
+    private Panel outputCard = new();
+    private Panel memoCard = new();
+    private Panel buttonCard = new();
 
     private SpeechRecognitionEngine? recognizer;
     private bool isListening = false;
+    private bool darkMode = false;
+
+    private readonly Drawing.Color Blue = Drawing.Color.FromArgb(11, 85, 217);
+    private readonly Drawing.Color Navy = Drawing.Color.FromArgb(7, 27, 85);
+    private readonly Drawing.Color LightBg = Drawing.Color.FromArgb(239, 246, 255);
+    private readonly Drawing.Color LightCard = Drawing.Color.White;
+    private readonly Drawing.Color DarkBg = Drawing.Color.FromArgb(17, 24, 39);
+    private readonly Drawing.Color DarkCard = Drawing.Color.FromArgb(31, 41, 55);
+    private readonly Drawing.Color DarkText = Drawing.Color.FromArgb(243, 244, 246);
 
     public MainForm()
     {
         Text = "Living Korea Studio Pro";
-        Width = 1200;
-        Height = 840;
-        MinimumSize = new System.Drawing.Size(1000, 720);
+        Width = 1240;
+        Height = 880;
+        MinimumSize = new Drawing.Size(1080, 760);
         StartPosition = FormStartPosition.CenterScreen;
         BuildUI();
+        ApplyTheme();
         InitSpeech();
     }
 
     private void BuildUI()
     {
-        Font = new System.Drawing.Font("맑은 고딕", 10);
-
+        Font = new Drawing.Font("맑은 고딕", 10);
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             RowCount = 5,
             ColumnCount = 1,
-            Padding = new Padding(14)
+            Padding = new Padding(16),
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
         Controls.Add(root);
 
-        var header = new Panel { Dock = DockStyle.Fill, BackColor = System.Drawing.Color.FromArgb(11, 85, 217) };
-        header.Controls.Add(new Label
+        headerPanel = RoundedPanel(Blue);
+        headerPanel.Dock = DockStyle.Fill;
+
+        var title = new Label
         {
             Text = "Living Korea Studio Pro",
-            ForeColor = System.Drawing.Color.White,
-            Font = new System.Drawing.Font("Arial", 22, System.Drawing.FontStyle.Bold),
+            ForeColor = Drawing.Color.White,
+            Font = new Drawing.Font("Arial", 24, Drawing.FontStyle.Bold),
             Dock = DockStyle.Top,
-            Height = 42,
-            Padding = new Padding(12, 8, 0, 0)
-        });
-        header.Controls.Add(new Label
+            Height = 44,
+            Padding = new Padding(18, 9, 0, 0)
+        };
+        var subtitle = new Label
         {
-            Text = "한국어 음성 입력 · 영어 번역 · 유튜브 대본 메모장  /  Korean Voice Input · English Translation · YouTube Script Notes",
-            ForeColor = System.Drawing.Color.White,
-            Font = new System.Drawing.Font("맑은 고딕", 10),
+            Text = "한국어 음성 입력 · 영어 번역 · 유튜브 제작 메모장  /  Korean Voice · English Translation · YouTube Creator Notes",
+            ForeColor = Drawing.Color.White,
+            Font = new Drawing.Font("맑은 고딕", 10),
             Dock = DockStyle.Bottom,
             Height = 34,
-            Padding = new Padding(14, 0, 0, 9)
-        });
-        root.Controls.Add(header, 0, 0);
+            Padding = new Padding(20, 0, 0, 10)
+        };
+        headerPanel.Controls.Add(title);
+        headerPanel.Controls.Add(subtitle);
+        root.Controls.Add(headerPanel, 0, 0);
 
-        var top = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-        top.Controls.Add(new Label
-        {
-            Text = "번역 스타일 / Style",
-            Width = 140,
-            TextAlign = System.Drawing.ContentAlignment.MiddleLeft
-        });
+        topCard = RoundedPanel(LightCard);
+        topCard.Dock = DockStyle.Fill;
+        var top = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(14, 12, 14, 8) };
 
-        styleBox.Width = 230;
+        top.Controls.Add(new Label { Text = "프로젝트 / Project", Width = 120, Height = 32, TextAlign = Drawing.ContentAlignment.MiddleLeft });
+        projectBox.Width = 230;
+        projectBox.PlaceholderText = "예: 집구하기 / Housing";
+        top.Controls.Add(projectBox);
+
+        top.Controls.Add(new Label { Text = "번역 스타일 / Style", Width = 130, Height = 32, TextAlign = Drawing.ContentAlignment.MiddleLeft });
+        styleBox.Width = 240;
         styleBox.DropDownStyle = ComboBoxStyle.DropDownList;
         styleBox.Items.AddRange(new object[]
         {
@@ -102,82 +127,181 @@ public class MainForm : Form
         styleBox.SelectedIndex = 0;
         top.Controls.Add(styleBox);
 
+        themeButton.Text = "🌙 다크모드 / Dark";
+        themeButton.Width = 145;
+        themeButton.Height = 34;
+        themeButton.Click += (_, _) =>
+        {
+            darkMode = !darkMode;
+            ApplyTheme();
+        };
+        top.Controls.Add(themeButton);
+
         statusLabel.Text = "대기 중 / Ready";
         statusLabel.AutoSize = true;
-        statusLabel.Padding = new Padding(20, 9, 0, 0);
+        statusLabel.Padding = new Padding(14, 8, 0, 0);
         top.Controls.Add(statusLabel);
-        root.Controls.Add(top, 0, 1);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 575 };
+        topCard.Controls.Add(top);
+        root.Controls.Add(topCard, 0, 1);
+
+        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 590 };
+        inputCard = RoundedPanel(LightCard);
+        outputCard = RoundedPanel(LightCard);
+        inputCard.Dock = DockStyle.Fill;
+        outputCard.Dock = DockStyle.Fill;
 
         koreanBox.Multiline = true;
         koreanBox.ScrollBars = ScrollBars.Vertical;
-        koreanBox.Font = new System.Drawing.Font("맑은 고딕", 12);
+        koreanBox.Font = new Drawing.Font("맑은 고딕", 12);
         koreanBox.Dock = DockStyle.Fill;
+        koreanBox.BorderStyle = BorderStyle.FixedSingle;
         koreanBox.PlaceholderText = "여기에 한국어를 입력하거나 마이크 시작을 누르고 말하세요.\r\nType Korean here or press Start Mic and speak.";
 
         englishBox.Multiline = true;
         englishBox.ScrollBars = ScrollBars.Vertical;
-        englishBox.Font = new System.Drawing.Font("Arial", 12);
+        englishBox.Font = new Drawing.Font("Arial", 12);
         englishBox.Dock = DockStyle.Fill;
-        englishBox.ForeColor = System.Drawing.Color.FromArgb(11, 47, 128);
+        englishBox.BorderStyle = BorderStyle.FixedSingle;
+        englishBox.ForeColor = Drawing.Color.FromArgb(11, 47, 128);
         englishBox.PlaceholderText = "영어 번역 결과가 여기에 표시됩니다.\r\nEnglish translation will appear here.";
 
-        split.Panel1.Controls.Add(WrapWithLabel("한국어 입력 / Korean Input", koreanBox));
-        split.Panel2.Controls.Add(WrapWithLabel("영어 번역 결과 / English Translation", englishBox));
+        inputCard.Controls.Add(WrapWithLabel("🇰🇷 한국어 입력 / Korean Input", koreanBox));
+        outputCard.Controls.Add(WrapWithLabel("🇺🇸 영어 번역 / English Translation", englishBox));
+        split.Panel1.Controls.Add(inputCard);
+        split.Panel2.Controls.Add(outputCard);
         root.Controls.Add(split, 0, 2);
 
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        buttonCard = RoundedPanel(LightCard);
+        buttonCard.Dock = DockStyle.Fill;
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12, 12, 12, 8) };
 
-        micButton.Text = "마이크 시작 / Start Mic";
-        micButton.Width = 155;
+        micButton = MakeButton("🎤 마이크 시작 / Start Mic", 170);
         micButton.Click += (_, _) => ToggleMic();
 
-        micCheckButton.Text = "마이크 확인 / Check Mic";
-        micCheckButton.Width = 160;
+        micCheckButton = MakeButton("🔎 마이크 확인 / Check Mic", 180);
         micCheckButton.Click += (_, _) => ShowSpeechInfo();
 
-        var translateButton = new Button { Text = "번역하기 / Translate", Width = 145 };
+        var translateButton = MakeButton("🌎 번역하기 / Translate", 170);
         translateButton.Click += async (_, _) => await TranslateAsync();
 
-        var addMemoButton = new Button { Text = "메모 추가 / Add Note", Width = 145 };
+        var addMemoButton = MakeButton("📝 메모 추가 / Add Note", 165);
         addMemoButton.Click += (_, _) => AddToMemo();
 
-        var copyButton = new Button { Text = "둘 다 복사 / Copy Both", Width = 155 };
+        var copyButton = MakeButton("📋 둘 다 복사 / Copy Both", 170);
         copyButton.Click += (_, _) => CopyBoth();
 
-        var saveButton = new Button { Text = "TXT 저장 / Save", Width = 125 };
+        var saveButton = MakeButton("💾 TXT 저장 / Save", 140);
         saveButton.Click += (_, _) => SaveTxt();
 
-        var clearButton = new Button { Text = "비우기 / Clear", Width = 115 };
+        var clearButton = MakeButton("🧹 비우기 / Clear", 130);
         clearButton.Click += (_, _) => { koreanBox.Clear(); englishBox.Clear(); SetStatus("입력창을 비웠습니다. / Cleared"); };
 
         buttons.Controls.AddRange(new Control[] { micButton, micCheckButton, translateButton, addMemoButton, copyButton, saveButton, clearButton });
-        root.Controls.Add(buttons, 0, 3);
+        buttonCard.Controls.Add(buttons);
+        root.Controls.Add(buttonCard, 0, 3);
 
+        memoCard = RoundedPanel(LightCard);
+        memoCard.Dock = DockStyle.Fill;
         memoBox.Multiline = true;
         memoBox.ScrollBars = ScrollBars.Vertical;
-        memoBox.Font = new System.Drawing.Font("맑은 고딕", 10);
+        memoBox.Font = new Drawing.Font("맑은 고딕", 10);
         memoBox.Dock = DockStyle.Fill;
+        memoBox.BorderStyle = BorderStyle.FixedSingle;
         memoBox.PlaceholderText = "저장한 번역 메모가 여기에 쌓입니다.\r\nSaved translation notes will appear here.";
-        root.Controls.Add(WrapWithLabel("번역 메모장 / Translation Notes", memoBox), 0, 4);
+        memoCard.Controls.Add(WrapWithLabel("📝 번역 메모장 / Translation Notes", memoBox));
+        root.Controls.Add(memoCard, 0, 4);
     }
 
-    private static Control WrapWithLabel(string label, Control inner)
+    private Button MakeButton(string text, int width)
     {
-        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1 };
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        return new Button
+        {
+            Text = text,
+            Width = width,
+            Height = 38,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Drawing.Font("맑은 고딕", 9, Drawing.FontStyle.Bold)
+        };
+    }
+
+    private Panel RoundedPanel(Drawing.Color color)
+    {
+        return new Panel
+        {
+            BackColor = color,
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 0, 10)
+        };
+    }
+
+    private Control WrapWithLabel(string label, Control inner)
+    {
+        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, Padding = new Padding(8) };
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        panel.Controls.Add(new Label
+        var lbl = new Label
         {
             Text = label,
             Dock = DockStyle.Fill,
-            Font = new System.Drawing.Font("맑은 고딕", 11, System.Drawing.FontStyle.Bold),
-            TextAlign = System.Drawing.ContentAlignment.MiddleLeft,
-            Padding = new Padding(8, 0, 0, 0)
-        }, 0, 0);
+            Font = new Drawing.Font("맑은 고딕", 11, Drawing.FontStyle.Bold),
+            TextAlign = Drawing.ContentAlignment.MiddleLeft,
+            Padding = new Padding(4, 0, 0, 0)
+        };
+        panel.Controls.Add(lbl, 0, 0);
         panel.Controls.Add(inner, 0, 1);
         return panel;
+    }
+
+    private void ApplyTheme()
+    {
+        var bg = darkMode ? DarkBg : LightBg;
+        var card = darkMode ? DarkCard : LightCard;
+        var text = darkMode ? DarkText : Drawing.Color.FromArgb(17, 24, 39);
+        var boxBg = darkMode ? Drawing.Color.FromArgb(17, 24, 39) : Drawing.Color.White;
+        var boxText = darkMode ? Drawing.Color.White : Drawing.Color.Black;
+
+        BackColor = bg;
+        foreach (Control c in Controls) ApplyThemeToControl(c, bg, card, text, boxBg, boxText);
+
+        headerPanel.BackColor = darkMode ? Navy : Blue;
+        themeButton.Text = darkMode ? "☀ 라이트 / Light" : "🌙 다크모드 / Dark";
+        englishBox.ForeColor = darkMode ? Drawing.Color.FromArgb(147, 197, 253) : Drawing.Color.FromArgb(11, 47, 128);
+    }
+
+    private void ApplyThemeToControl(Control control, Drawing.Color bg, Drawing.Color card, Drawing.Color text, Drawing.Color boxBg, Drawing.Color boxText)
+    {
+        if (control is TextBox tb)
+        {
+            tb.BackColor = boxBg;
+            tb.ForeColor = boxText;
+        }
+        else if (control is Panel p && p != headerPanel)
+        {
+            p.BackColor = card;
+        }
+        else if (control is Label lbl && lbl.Parent != headerPanel)
+        {
+            lbl.ForeColor = text;
+            lbl.BackColor = lbl.Parent?.BackColor ?? bg;
+        }
+        else if (control is Button btn)
+        {
+            btn.BackColor = darkMode ? Drawing.Color.FromArgb(55, 65, 81) : Drawing.Color.FromArgb(239, 246, 255);
+            btn.ForeColor = darkMode ? Drawing.Color.White : Navy;
+            btn.FlatAppearance.BorderColor = darkMode ? Drawing.Color.FromArgb(75, 85, 99) : Drawing.Color.FromArgb(191, 219, 254);
+        }
+        else if (control is ComboBox cb)
+        {
+            cb.BackColor = boxBg;
+            cb.ForeColor = boxText;
+        }
+        else
+        {
+            control.BackColor = control is TableLayoutPanel or FlowLayoutPanel ? bg : control.BackColor;
+        }
+
+        foreach (Control child in control.Controls) ApplyThemeToControl(child, bg, card, text, boxBg, boxText);
     }
 
     private void InitSpeech()
@@ -209,10 +333,7 @@ public class MainForm : Form
                     SetStatus("음성 입력 완료 / Voice captured: " + e.Result.Text);
                     await TranslateAsync();
                 }
-                else
-                {
-                    SetStatus("음성을 인식하지 못했습니다. / Speech not recognized.");
-                }
+                else SetStatus("음성을 인식하지 못했습니다. / Speech not recognized.");
             };
 
             recognizer.SpeechRecognitionRejected += (_, _) =>
@@ -235,10 +356,7 @@ public class MainForm : Form
                         SetStatus("듣는 중... / Listening...");
                         recognizer?.RecognizeAsync(RecognizeMode.Single);
                     }
-                    catch
-                    {
-                        SetStatus("마이크 재시작 오류 / Mic restart error.");
-                    }
+                    catch { SetStatus("마이크 재시작 오류 / Mic restart error."); }
                 }
             };
 
@@ -258,18 +376,15 @@ public class MainForm : Form
         try
         {
             var installed = SpeechRecognitionEngine.InstalledRecognizers();
-
             if (installed.Count == 0)
             {
                 MessageBox.Show(
-                    "설치된 Windows 음성 인식 엔진이 없습니다.\n\n" +
-                    "No Windows speech recognition engine is installed.\n\n" +
+                    "설치된 Windows 음성 인식 엔진이 없습니다.\n\nNo Windows speech recognition engine is installed.\n\n" +
                     "Windows 설정 → 시간 및 언어 → 언어 및 지역 → 한국어 → 언어 옵션 → 음성 인식 설치\n" +
                     "Windows Settings → Time & Language → Language & Region → Korean → Language Options → Install Speech",
                     "마이크 확인 / Check Mic");
                 return;
             }
-
             var info = string.Join("\n", installed.Select(r => "- " + r.Culture.Name + " / " + r.Description));
             MessageBox.Show(
                 "설치된 음성 인식 엔진 / Installed speech engines:\n\n" + info + "\n\n" +
@@ -289,7 +404,6 @@ public class MainForm : Form
             ShowSpeechInfo();
             return;
         }
-
         try
         {
             if (!isListening)
@@ -332,16 +446,13 @@ public class MainForm : Form
 
             if (styleBox.Text.StartsWith("유튜브"))
             {
-                translated =
-                    "Hello everyone, welcome to Living Korea!\r\n\r\n" +
-                    translated +
-                    "\r\n\r\nIf this was helpful, please like and subscribe for more real-life tips about Korea.";
+                translated = "Hello everyone, welcome to Living Korea!\r\n\r\n" +
+                             translated +
+                             "\r\n\r\nIf this was helpful, please like and subscribe for more real-life tips about Korea.";
             }
             else if (styleBox.Text.StartsWith("정중한"))
             {
-                translated =
-                    "Hello. Today, I would like to explain this topic clearly and politely.\r\n\r\n" +
-                    translated;
+                translated = "Hello. Today, I would like to explain this topic clearly and politely.\r\n\r\n" + translated;
             }
 
             englishBox.Text = translated;
@@ -357,10 +468,7 @@ public class MainForm : Form
     private static async Task<string> TranslateWithMyMemoryAsync(string text)
     {
         using var client = new HttpClient();
-        var url = "https://api.mymemory.translated.net/get?q=" +
-                  Uri.EscapeDataString(text) +
-                  "&langpair=ko|en";
-
+        var url = "https://api.mymemory.translated.net/get?q=" + Uri.EscapeDataString(text) + "&langpair=ko|en";
         var json = await client.GetStringAsync(url);
         using var doc = JsonDocument.Parse(json);
         return doc.RootElement.GetProperty("responseData").GetProperty("translatedText").GetString() ?? "";
@@ -370,15 +478,15 @@ public class MainForm : Form
     {
         var ko = koreanBox.Text.Trim();
         var en = englishBox.Text.Trim();
-
         if (string.IsNullOrWhiteSpace(ko) || string.IsNullOrWhiteSpace(en))
         {
             MessageBox.Show("한국어와 영어 번역 결과가 모두 있어야 합니다.\nKorean and English text are required.", "확인 / Check");
             return;
         }
 
+        var project = string.IsNullOrWhiteSpace(projectBox.Text) ? "Living Korea" : projectBox.Text.Trim();
         var block =
-            $"[{DateTime.Now:yyyy-MM-dd HH:mm}]\r\n" +
+            $"[{DateTime.Now:yyyy-MM-dd HH:mm}]  Project: {project}\r\n" +
             $"한국어 / Korean:\r\n{ko}\r\n\r\n" +
             $"영어 / English:\r\n{en}\r\n\r\n" +
             "--------------------------------------------------\r\n\r\n";
@@ -395,10 +503,11 @@ public class MainForm : Form
 
     private void SaveTxt()
     {
+        var project = string.IsNullOrWhiteSpace(projectBox.Text) ? "Living_Korea" : projectBox.Text.Trim().Replace(" ", "_");
         using var dialog = new SaveFileDialog
         {
             Filter = "Text File (*.txt)|*.txt",
-            FileName = $"Living_Korea_Translation_{DateTime.Now:yyyyMMdd}.txt"
+            FileName = $"{project}_Translation_{DateTime.Now:yyyyMMdd}.txt"
         };
 
         if (dialog.ShowDialog() == DialogResult.OK)
