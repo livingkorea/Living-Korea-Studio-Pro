@@ -1,11 +1,12 @@
 using System;
-using System.Linq;
+using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Speech.Recognition;
+using NAudio.Wave;
+using Whisper.net;
 using Drawing = System.Drawing;
 
 namespace LivingKoreaStudio;
@@ -33,15 +34,12 @@ public class MainForm : Form
     private Button themeButton = new();
 
     private Panel headerPanel = new();
-    private Panel topCard = new();
-    private Panel inputCard = new();
-    private Panel outputCard = new();
-    private Panel memoCard = new();
-    private Panel buttonCard = new();
-
-    private SpeechRecognitionEngine? recognizer;
-    private bool isListening = false;
     private bool darkMode = false;
+    private bool isRecording = false;
+
+    private WaveInEvent? waveIn;
+    private WaveFileWriter? writer;
+    private string? currentWavPath;
 
     private readonly Drawing.Color Blue = Drawing.Color.FromArgb(11, 85, 217);
     private readonly Drawing.Color Navy = Drawing.Color.FromArgb(7, 27, 85);
@@ -50,6 +48,8 @@ public class MainForm : Form
     private readonly Drawing.Color DarkBg = Drawing.Color.FromArgb(17, 24, 39);
     private readonly Drawing.Color DarkCard = Drawing.Color.FromArgb(31, 41, 55);
     private readonly Drawing.Color DarkText = Drawing.Color.FromArgb(243, 244, 246);
+
+    private const string ModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
 
     public MainForm()
     {
@@ -60,7 +60,6 @@ public class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         BuildUI();
         ApplyTheme();
-        InitSpeech();
     }
 
     private void BuildUI()
@@ -80,10 +79,8 @@ public class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
         Controls.Add(root);
 
-        headerPanel = RoundedPanel(Blue);
-        headerPanel.Dock = DockStyle.Fill;
-
-        var title = new Label
+        headerPanel = new Panel { BackColor = Blue, Dock = DockStyle.Fill, Padding = new Padding(10), Margin = new Padding(0, 0, 0, 10) };
+        headerPanel.Controls.Add(new Label
         {
             Text = "Living Korea Studio Pro",
             ForeColor = Drawing.Color.White,
@@ -91,24 +88,20 @@ public class MainForm : Form
             Dock = DockStyle.Top,
             Height = 44,
             Padding = new Padding(18, 9, 0, 0)
-        };
-        var subtitle = new Label
+        });
+        headerPanel.Controls.Add(new Label
         {
-            Text = "한국어 음성 입력 · 영어 번역 · 유튜브 제작 메모장  /  Korean Voice · English Translation · YouTube Creator Notes",
+            Text = "Whisper 음성 입력 · 영어 번역 · 유튜브 제작 메모장  /  Whisper Voice · English Translation · YouTube Creator Notes",
             ForeColor = Drawing.Color.White,
             Font = new Drawing.Font("맑은 고딕", 10),
             Dock = DockStyle.Bottom,
             Height = 34,
             Padding = new Padding(20, 0, 0, 10)
-        };
-        headerPanel.Controls.Add(title);
-        headerPanel.Controls.Add(subtitle);
+        });
         root.Controls.Add(headerPanel, 0, 0);
 
-        topCard = RoundedPanel(LightCard);
-        topCard.Dock = DockStyle.Fill;
+        var topCard = CardPanel();
         var top = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(14, 12, 14, 8) };
-
         top.Controls.Add(new Label { Text = "프로젝트 / Project", Width = 120, Height = 32, TextAlign = Drawing.ContentAlignment.MiddleLeft });
         projectBox.Width = 230;
         projectBox.PlaceholderText = "예: 집구하기 / Housing";
@@ -130,11 +123,7 @@ public class MainForm : Form
         themeButton.Text = "🌙 다크모드 / Dark";
         themeButton.Width = 145;
         themeButton.Height = 34;
-        themeButton.Click += (_, _) =>
-        {
-            darkMode = !darkMode;
-            ApplyTheme();
-        };
+        themeButton.Click += (_, _) => { darkMode = !darkMode; ApplyTheme(); };
         top.Controls.Add(themeButton);
 
         statusLabel.Text = "대기 중 / Ready";
@@ -146,10 +135,8 @@ public class MainForm : Form
         root.Controls.Add(topCard, 0, 1);
 
         var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 590 };
-        inputCard = RoundedPanel(LightCard);
-        outputCard = RoundedPanel(LightCard);
-        inputCard.Dock = DockStyle.Fill;
-        outputCard.Dock = DockStyle.Fill;
+        var inputCard = CardPanel();
+        var outputCard = CardPanel();
 
         koreanBox.Multiline = true;
         koreanBox.ScrollBars = ScrollBars.Vertical;
@@ -172,15 +159,14 @@ public class MainForm : Form
         split.Panel2.Controls.Add(outputCard);
         root.Controls.Add(split, 0, 2);
 
-        buttonCard = RoundedPanel(LightCard);
-        buttonCard.Dock = DockStyle.Fill;
+        var buttonCard = CardPanel();
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12, 12, 12, 8) };
 
-        micButton = MakeButton("🎤 마이크 시작 / Start Mic", 170);
-        micButton.Click += (_, _) => ToggleMic();
+        micButton = MakeButton("🎤 녹음 시작 / Start Recording", 210);
+        micButton.Click += async (_, _) => await ToggleRecordingAsync();
 
         micCheckButton = MakeButton("🔎 마이크 확인 / Check Mic", 180);
-        micCheckButton.Click += (_, _) => ShowSpeechInfo();
+        micCheckButton.Click += (_, _) => CheckMic();
 
         var translateButton = MakeButton("🌎 번역하기 / Translate", 170);
         translateButton.Click += async (_, _) => await TranslateAsync();
@@ -201,8 +187,7 @@ public class MainForm : Form
         buttonCard.Controls.Add(buttons);
         root.Controls.Add(buttonCard, 0, 3);
 
-        memoCard = RoundedPanel(LightCard);
-        memoCard.Dock = DockStyle.Fill;
+        var memoCard = CardPanel();
         memoBox.Multiline = true;
         memoBox.ScrollBars = ScrollBars.Vertical;
         memoBox.Font = new Drawing.Font("맑은 고딕", 10);
@@ -213,42 +198,30 @@ public class MainForm : Form
         root.Controls.Add(memoCard, 0, 4);
     }
 
-    private Button MakeButton(string text, int width)
-    {
-        return new Button
-        {
-            Text = text,
-            Width = width,
-            Height = 38,
-            FlatStyle = FlatStyle.Flat,
-            Font = new Drawing.Font("맑은 고딕", 9, Drawing.FontStyle.Bold)
-        };
-    }
+    private Panel CardPanel() => new Panel { BackColor = LightCard, Padding = new Padding(10), Margin = new Padding(0, 0, 0, 10), Dock = DockStyle.Fill };
 
-    private Panel RoundedPanel(Drawing.Color color)
+    private Button MakeButton(string text, int width) => new Button
     {
-        return new Panel
-        {
-            BackColor = color,
-            Padding = new Padding(10),
-            Margin = new Padding(0, 0, 0, 10)
-        };
-    }
+        Text = text,
+        Width = width,
+        Height = 38,
+        FlatStyle = FlatStyle.Flat,
+        Font = new Drawing.Font("맑은 고딕", 9, Drawing.FontStyle.Bold)
+    };
 
     private Control WrapWithLabel(string label, Control inner)
     {
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, Padding = new Padding(8) };
         panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var lbl = new Label
+        panel.Controls.Add(new Label
         {
             Text = label,
             Dock = DockStyle.Fill,
             Font = new Drawing.Font("맑은 고딕", 11, Drawing.FontStyle.Bold),
             TextAlign = Drawing.ContentAlignment.MiddleLeft,
             Padding = new Padding(4, 0, 0, 0)
-        };
-        panel.Controls.Add(lbl, 0, 0);
+        }, 0, 0);
         panel.Controls.Add(inner, 0, 1);
         return panel;
     }
@@ -304,134 +277,167 @@ public class MainForm : Form
         foreach (Control child in control.Controls) ApplyThemeToControl(child, bg, card, text, boxBg, boxText);
     }
 
-    private void InitSpeech()
+    private async Task ToggleRecordingAsync()
+    {
+        if (!isRecording)
+        {
+            StartRecording();
+        }
+        else
+        {
+            StopRecording();
+            await Task.Delay(500);
+            if (!string.IsNullOrWhiteSpace(currentWavPath) && File.Exists(currentWavPath))
+            {
+                await TranscribeWavAsync(currentWavPath);
+            }
+        }
+    }
+
+    private void StartRecording()
     {
         try
         {
-            var installed = SpeechRecognitionEngine.InstalledRecognizers();
-            var koreanRecognizer = installed.FirstOrDefault(r =>
-                r.Culture.Name.Equals("ko-KR", StringComparison.OrdinalIgnoreCase) ||
-                r.Culture.TwoLetterISOLanguageName.Equals("ko", StringComparison.OrdinalIgnoreCase));
+            var tempDir = Path.Combine(Path.GetTempPath(), "LivingKoreaStudio");
+            Directory.CreateDirectory(tempDir);
+            currentWavPath = Path.Combine(tempDir, "recording_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".wav");
 
-            if (koreanRecognizer == null)
+            waveIn = new WaveInEvent
             {
-                micButton.Enabled = false;
-                micButton.Text = "마이크 사용 불가 / Mic Unavailable";
-                SetStatus("한국어 음성 인식 엔진이 없습니다. / Korean speech engine not found.");
+                DeviceNumber = 0,
+                WaveFormat = new WaveFormat(16000, 16, 1)
+            };
+
+            writer = new WaveFileWriter(currentWavPath, waveIn.WaveFormat);
+            waveIn.DataAvailable += (_, e) =>
+            {
+                writer?.Write(e.Buffer, 0, e.BytesRecorded);
+                writer?.Flush();
+            };
+            waveIn.RecordingStopped += (_, _) =>
+            {
+                writer?.Dispose();
+                writer = null;
+                waveIn?.Dispose();
+                waveIn = null;
+            };
+
+            waveIn.StartRecording();
+            isRecording = true;
+            micButton.Text = "🛑 녹음 중지 / Stop Recording";
+            SetStatus("녹음 중... 한국어로 말하세요. / Recording... Please speak Korean.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("녹음 오류 / Recording error");
+            MessageBox.Show("마이크 녹음을 시작할 수 없습니다.\nCould not start microphone recording.\n\n" + ex.Message, "녹음 오류 / Recording Error");
+        }
+    }
+
+    private void StopRecording()
+    {
+        try
+        {
+            isRecording = false;
+            micButton.Text = "🎤 녹음 시작 / Start Recording";
+            waveIn?.StopRecording();
+            SetStatus("녹음 완료. Whisper 변환 준비 중... / Recording complete. Preparing Whisper...");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("녹음 중지 오류 / Stop recording error");
+            MessageBox.Show(ex.Message, "녹음 오류 / Recording Error");
+        }
+    }
+
+    private void CheckMic()
+    {
+        try
+        {
+            var count = WaveInEvent.DeviceCount;
+            if (count <= 0)
+            {
+                MessageBox.Show("사용 가능한 마이크가 없습니다.\nNo microphone device was found.", "마이크 확인 / Check Mic");
                 return;
             }
 
-            recognizer = new SpeechRecognitionEngine(koreanRecognizer);
-            recognizer.SetInputToDefaultAudioDevice();
-            recognizer.LoadGrammar(new DictationGrammar());
-
-            recognizer.SpeechRecognized += async (_, e) =>
+            var info = "";
+            for (int i = 0; i < count; i++)
             {
-                if (!string.IsNullOrWhiteSpace(e.Result.Text))
-                {
-                    koreanBox.AppendText((koreanBox.Text.Trim().Length > 0 ? Environment.NewLine : "") + e.Result.Text);
-                    SetStatus("음성 입력 완료 / Voice captured: " + e.Result.Text);
-                    await TranslateAsync();
-                }
-                else SetStatus("음성을 인식하지 못했습니다. / Speech not recognized.");
-            };
+                var caps = WaveInEvent.GetCapabilities(i);
+                info += "- " + caps.ProductName + "\n";
+            }
 
-            recognizer.SpeechRecognitionRejected += (_, _) =>
-            {
-                SetStatus("음성을 인식하지 못했습니다. / Speech rejected. Try speaking more clearly.");
-            };
-
-            recognizer.RecognizeCompleted += (_, e) =>
-            {
-                if (e.Error != null)
-                {
-                    SetStatus("마이크 오류 / Mic error: " + e.Error.Message);
-                    return;
-                }
-
-                if (isListening)
-                {
-                    try
-                    {
-                        SetStatus("듣는 중... / Listening...");
-                        recognizer?.RecognizeAsync(RecognizeMode.Single);
-                    }
-                    catch { SetStatus("마이크 재시작 오류 / Mic restart error."); }
-                }
-            };
-
-            SetStatus("마이크 준비 완료 / Mic ready");
+            MessageBox.Show("사용 가능한 마이크 / Available microphones:\n\n" + info +
+                            "\n이 버전은 Windows 음성 인식 엔진이 아니라 Whisper 방식을 사용합니다.\n" +
+                            "This version uses Whisper, not Windows speech recognition.",
+                            "마이크 확인 / Check Mic");
         }
         catch (Exception ex)
         {
-            micButton.Enabled = false;
-            micButton.Text = "마이크 오류 / Mic Error";
-            SetStatus("마이크 초기화 실패 / Mic initialization failed");
-            MessageBox.Show("마이크 초기화에 실패했습니다.\nMic initialization failed.\n\n" + ex.Message, "마이크 오류 / Mic Error");
+            MessageBox.Show("마이크 정보를 확인할 수 없습니다.\nCould not check microphone information.\n\n" + ex.Message, "마이크 확인 오류 / Check Mic Error");
         }
     }
 
-    private void ShowSpeechInfo()
+    private async Task TranscribeWavAsync(string wavPath)
     {
         try
         {
-            var installed = SpeechRecognitionEngine.InstalledRecognizers();
-            if (installed.Count == 0)
+            var modelPath = await EnsureWhisperModelAsync();
+            SetStatus("Whisper 음성 변환 중... / Transcribing with Whisper...");
+
+            var sb = new StringBuilder();
+            using var whisperFactory = WhisperFactory.FromPath(modelPath);
+            using var processor = whisperFactory.CreateBuilder()
+                .WithLanguage("ko")
+                .Build();
+
+            await using var fileStream = File.OpenRead(wavPath);
+            await foreach (var result in processor.ProcessAsync(fileStream))
             {
-                MessageBox.Show(
-                    "설치된 Windows 음성 인식 엔진이 없습니다.\n\nNo Windows speech recognition engine is installed.\n\n" +
-                    "Windows 설정 → 시간 및 언어 → 언어 및 지역 → 한국어 → 언어 옵션 → 음성 인식 설치\n" +
-                    "Windows Settings → Time & Language → Language & Region → Korean → Language Options → Install Speech",
-                    "마이크 확인 / Check Mic");
+                sb.Append(result.Text);
+            }
+
+            var text = sb.ToString().Trim();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                SetStatus("음성을 텍스트로 변환하지 못했습니다. / No speech detected.");
+                MessageBox.Show("음성을 텍스트로 변환하지 못했습니다.\nNo speech was detected.", "Whisper");
                 return;
             }
-            var info = string.Join("\n", installed.Select(r => "- " + r.Culture.Name + " / " + r.Description));
-            MessageBox.Show(
-                "설치된 음성 인식 엔진 / Installed speech engines:\n\n" + info + "\n\n" +
-                "한국어 인식에는 ko-KR 항목이 필요합니다.\nKorean recognition requires ko-KR.",
-                "마이크 확인 / Check Mic");
+
+            koreanBox.AppendText((koreanBox.Text.Trim().Length > 0 ? Environment.NewLine : "") + text);
+            SetStatus("Whisper 변환 완료 / Whisper transcription complete");
+            await TranslateAsync();
         }
         catch (Exception ex)
         {
-            MessageBox.Show("음성 인식 정보를 확인할 수 없습니다.\nCould not check speech information.\n\n" + ex.Message, "마이크 확인 오류 / Check Mic Error");
+            SetStatus("Whisper 오류 / Whisper error");
+            MessageBox.Show("Whisper 음성 변환 중 오류가 발생했습니다.\nWhisper transcription failed.\n\n" + ex.Message, "Whisper Error");
         }
     }
 
-    private void ToggleMic()
+    private async Task<string> EnsureWhisperModelAsync()
     {
-        if (recognizer == null)
-        {
-            ShowSpeechInfo();
-            return;
-        }
-        try
-        {
-            if (!isListening)
-            {
-                isListening = true;
-                micButton.Text = "마이크 중지 / Stop Mic";
-                SetStatus("듣는 중... 한국어로 말해보세요. / Listening... Please speak Korean.");
-                recognizer.RecognizeAsync(RecognizeMode.Single);
-            }
-            else
-            {
-                isListening = false;
-                micButton.Text = "마이크 시작 / Start Mic";
-                recognizer.RecognizeAsyncCancel();
-                SetStatus("마이크 중지됨 / Mic stopped");
-            }
-        }
-        catch (Exception ex)
-        {
-            SetStatus("마이크 오류 / Mic error");
-            MessageBox.Show(ex.Message, "마이크 오류 / Mic Error");
-        }
-    }
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LivingKoreaStudio", "models");
+        Directory.CreateDirectory(appData);
+        var modelPath = Path.Combine(appData, "ggml-base.bin");
 
-    private void SetStatus(string text)
-    {
-        statusLabel.Text = text;
-        statusLabel.Refresh();
+        if (File.Exists(modelPath) && new FileInfo(modelPath).Length > 10_000_000)
+            return modelPath;
+
+        SetStatus("Whisper 모델 다운로드 중... 첫 실행은 시간이 걸립니다. / Downloading Whisper model...");
+        using var client = new HttpClient();
+        client.Timeout = TimeSpan.FromMinutes(20);
+
+        using var response = await client.GetAsync(ModelUrl, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        await using var source = await response.Content.ReadAsStreamAsync();
+        await using var file = File.Create(modelPath);
+        await source.CopyToAsync(file);
+
+        return modelPath;
     }
 
     private async Task TranslateAsync()
