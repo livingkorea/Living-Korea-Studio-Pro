@@ -26,7 +26,7 @@ $whisperNative = $nativeFiles | Where-Object { $_.Name -match 'whisper|ggml|ggml
 if (!$whisperNative -or $whisperNative.Count -eq 0) {
     Write-Host "Files in publish folder:" -ForegroundColor Yellow
     Get-ChildItem $PublishDir -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
-    throw "Whisper native runtime DLL was not found. Check Whisper.net.Runtime.Cpu and PublishSingleFile=false."
+    throw "Whisper native runtime DLL was not found. Check Whisper.net.Runtime and PublishSingleFile=false."
 }
 
 $singleFileRisk = Get-ChildItem $PublishDir -Recurse -File | Measure-Object
